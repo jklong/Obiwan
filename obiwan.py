@@ -1,9 +1,9 @@
 import numpy as np
 import cv2
 import sys
+import math
 
 class Obiwan:
-
 
     def set_roi(self, event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONUP:
@@ -14,7 +14,7 @@ class Obiwan:
             roi_x2 = self.roi_x + self.roi_size
             roi_y2 = self.roi_y + self.roi_size
             self.roi = self.img[roi_y1:roi_y2, roi_x1:roi_x2]
-            print 'ROI set at t= '+ str(self.t/self.vidFPS)
+            print '#ROI set at t= '+ str(self.t/self.vidFPS)
 
     def set_roi_size(self, r):
         self.roi_size = r
@@ -83,10 +83,11 @@ class Obiwan:
 
             res = cv2.matchTemplate(self.img, self.roi, cv2.TM_CCOEFF_NORMED)
             min_v, max_v, min_loc, max_loc = cv2.minMaxLoc(res)
-            
+           
             self.roi_x, self.roi_y  = max_loc
             self.roi_x += self.roi_size 
             self.roi_y += self.roi_size
+            print str(self.t) + ',' + str(self.roi_x) + ',' + str(self.roi_y)
 
             self.draw_roi()
             cv2.imshow('Obiwan',self.img)
