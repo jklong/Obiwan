@@ -3,147 +3,135 @@ import cv2
 import sys
 import math
 import matplotlib.pyplot as plt
+import time
 
-class Obiwan:
+def get_roi_corners():
+    
+    roi_x1 = roi_x - roi_size
+    roi_y1 = roi_y - roi_size
+    roi_x2 = roi_x + roi_size
+    roi_y2 = roi_y + roi_size
+    
+    return (roi_x1, roi_y1, roi_x2, roi_y2)
 
-    def get_roi_corners(self):
-        
-        roi_x1 = self.roi_x - self.roi_size
-        roi_y1 = self.roi_y - self.roi_size
-        roi_x2 = self.roi_x + self.roi_size
-        roi_y2 = self.roi_y + self.roi_size
-        
-        return (roi_x1, roi_y1, roi_x2, roi_y2)
+def set_roi( event, x, y, flags, param):
+    if event == cv2.EVENT_LBUTTONUP:
+        global roi_x
+        global roi_y
+        global roi 
 
-    def set_roi(self, event, x, y, flags, param):
-        if event == cv2.EVENT_LBUTTONUP:
-            self.roi_x = x
-            self.roi_y = y
+        roi_x = x
+        roi_y = y
 
-            x1,y1,x2,y2 = self.get_roi_corners()
+        x1,y1,x2,y2 = get_roi_corners()
 
-            self.roi = self.img[y1:y2, x1:x2]
-            print '#ROI set at t= '+ str(self.t/self.vidFPS)
+        roi = img[y1:y2, x1:x2]
+        print '#ROI set at t= '+ str(t/vidFPS)
 
-    def set_roi_size(self, r):
-        self.roi_size = r
+def set_roi_size( r):
+    global roi_size
+    roi_size = r
 
-    def draw_roi(self):
-        x1,y1,x2,y2 = self.get_roi_corners()
+def draw_roi():
+    x1,y1,x2,y2 = get_roi_corners()
 
-        cv2.rectangle(self.img, (x1, y1), (x2, y2), (0, 0, 255), 1)
-        cv2.circle(self.img, (self.roi_x, self.roi_y), 2, (255, 0, 0), 1)
+    cv2.rectangle(img, (x1, y1), (x2, y2), (0, 0, 255), 1)
+    cv2.circle(img, (roi_x, roi_y), 2, (255, 0, 0), 1)
 
-    def calc_vel(self, pts):
-        #Returns vector of pixel velocity between frames
-        #Assume stationary from beginning of film
-        vel = [0.0]
-        
-        # We want magnitude of the velocity only, we don't care about direction
-        # v = dr/dt. Assume cartesian distance, dt = 1 (frame)
-        for i in range(1, len(pts)-1):
-          x0,y0 = pts[i-1]
-          x1,y1 = pts[i]
-          
-          r = math.sqrt((y1-y0)**2 + (x1-x0)**2)
-          vel.append(r)
+def convert_screen_to_cartesian(pts):
+    
+    #Screen coordinates have (0,0) at top left but cartesian has bottom left
+    pts = map ( lambda x: (x[0],x[1] + vidHeight),  pts)
 
-        return vel
+    return pts
 
-    def calc_accel(self,vel):
-        accel = []
+roi_size = 25
+roi_x = -1
+roi_y  = -1
+roi = None
 
+t = 0 #Frame counter
 
-        # Magnitude of acceleration only, we don't have the direction anyway
-        # a = dv/dt, dt = 1 (frame)
-        for i in range(1, len(vel)):
-            u = vel[i-1]
-            v = vel[1]
+if len(sys.argv) != 2:
+    sys.exit('Usage: obiwan.py [video file]')
 
-            a = v-u
-            accel.append(a)
+#Try to open video
+cap = cv2.VideoCapture(sys.argv[1])
 
-        return accel
+if not cap.isOpened():
+    sys.exit('Error opening video file')
 
-    def __init__(self, argv):
-        
-        self.roi_size = 25
-        self.roi_x = -1
-        self.roi_y  = -1
-        self.roi = None
+#Get video properties
+vidWidth = cap.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH)
+vidHeight = cap.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT)
+vidFPS = cap.get(cv2.cv.CV_CAP_PROP_FPS)
 
-        self.t = 0 #Frame counter
-        
-        if len(argv) != 2:
-            sys.exit('Usage: obiwan.py [video file]')
-        
-        #Try to open video
-        self.cap = cv2.VideoCapture(sys.argv[1])
+#Define windows
+cv2.namedWindow('Obiwan')
+cv2.setMouseCallback('Obiwan', set_roi)
 
-        if not self.cap.isOpened():
-            sys.exit('Error opening video file')
-        
-        #Get video properties
-        self.vidWidth = self.cap.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH)
-        self.vidHeight = self.cap.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT)
-        self.vidFPS = self.cap.get(cv2.cv.CV_CAP_PROP_FPS)
+cv2.namedWindow('obwControls')
+cv2.createTrackbar('ROI size', 'obwControls', roi_size, 100, set_roi_size)
 
-        #Define windows
-        cv2.namedWindow('Obiwan')
-        cv2.setMouseCallback('Obiwan', self.set_roi)
+roi_points = []
+vel = [0.0]
+acc = []
+line = None
+seconds = []
+#if true the graph will display and update in real time. Slows down execution
+ANIMATE_GRAPH = False
 
-        cv2.namedWindow('obwControls')
-        cv2.createTrackbar('ROI size', 'obwControls', self.roi_size, 100, self.set_roi_size)
+ret, img = cap.read()
+img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+cv2.imshow('Obiwan',img)
+plt.ion()
+t += 1
 
-    def go(self):
-        
-        roi_points = []
+while (roi_x == -1 or roi_y == -1):
+    cv2.waitKey(10)
 
+roi_points.append((roi_x,roi_y))
+draw_roi()
 
-        ret, self.img = self.cap.read()
-        self.img = cv2.cvtColor(self.img, cv2.COLOR_BGR2GRAY)
-        cv2.imshow('Obiwan',self.img)
-        self.t += 1
+while(1):
+    t += 1
+    ret, img = cap.read()
 
-        while (self.roi_x == -1 or self.roi_y == -1):
-            cv2.waitKey(10)
+    if img is None:
+        break
 
-        self.draw_roi()
-        
-        while(1):
-            self.t += 1
-            ret, self.img = self.cap.read()
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    res = cv2.matchTemplate(img, roi, cv2.TM_CCOEFF_NORMED)
+    min_v, max_v, min_loc, max_loc = cv2.minMaxLoc(res)
+   
+    roi_x, roi_y = max_loc
+    roi_x += roi_size 
+    roi_y += roi_size
 
-            if self.img is None:
-                break
+    #Calculate velocity
+    x0,y0 = roi_points[-1]
+    vel.append(math.sqrt((roi_y-y0)**2 + (roi_x-x0)**2))
 
-            self.img = cv2.cvtColor(self.img, cv2.COLOR_BGR2GRAY)
-            res = cv2.matchTemplate(self.img, self.roi, cv2.TM_CCOEFF_NORMED)
-            min_v, max_v, min_loc, max_loc = cv2.minMaxLoc(res)
-           
-            self.roi_x, self.roi_y = max_loc
-            self.roi_x += self.roi_size 
-            self.roi_y += self.roi_size
-            roi_points.append((self.roi_x, self.roi_y))
+    #Calculate acceleration
+    acc.append(vel[-1] - vel[-2])
 
-            self.draw_roi()
-            cv2.imshow('Obiwan',self.img)
-                 
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+    roi_points.append((roi_x, roi_y))
+    seconds.append(t/vidFPS) 
 
-        if len(roi_points) > 2:
-            roi_vel = self.calc_vel(roi_points)
-            accs = self.calc_accel(roi_vel)
-            plt.plot(accs)
-            plt.ylabel('Force')
-            plt.show()
-            print max(accs)
+    draw_roi()
+    cv2.putText(img, str(round(seconds[-1],3)), (30,30), cv2.FONT_HERSHEY_SIMPLEX, 1,255 )
+    cv2.imshow('Obiwan',img)
+    if ANIMATE_GRAPH:
+        plt.plot(seconds, acc, 'r-', linewidth=1)
+        plt.ylabel('Force')
+        plt.draw()
+         
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
 
-
-        self.cap.release()
-        cv2.destroyAllWindows()
-
-if __name__ == "__main__":
-    obw = Obiwan(sys.argv)
-    obw.go()
+plt.plot(seconds, acc, 'r-', linewidth=1)
+plt.ylabel('Force')
+plt.ioff()
+plt.show()
+cap.release()
+cv2.destroyAllWindows()
