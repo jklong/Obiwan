@@ -3,6 +3,7 @@ import cv2
 import sys
 import math
 import matplotlib.pyplot as plt
+import argparse
 
 def get_roi_corners():
     
@@ -72,18 +73,38 @@ def setEndFrame(n):
         cv2.imshow('Obiwan',img)
         endFrame = n
 
+def smooth(x,window_len=11,window='hanning'):
+    if x.ndim != 1:
+        raise ValueError, "smooth only accepts 1 dimensional arrays."
+    if x.size < window_len:
+        raise ValueError, "Input vector needs to be bigger than window size"
+    if window_len < 3:
+        return x
+    if not window in ['flat', 'hanning', 'hamming','bartlett','blackman']:
+        raise ValueError, "Window is one of 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'"
+    s=np.r_[2*x[0]-x[window_len-1::-1],x,2*x[-1]-x[-1:-window_len:-1]]
+    if window == 'flat':
+        w=np.ones(window_len,'d')
+    else:
+        w=eval('np.'+window+'(window_len)')
+    y=np.convolve(w/w.sum(),s,mode='same')
+    return y[window_len:-window_len+1]
 
 running = False
 roi_size = 25
 roi_x = -1
 roi_y  = -1
 roi = None
+smooth_len = 11 #Length of smoothing kernal
 
-if len(sys.argv) != 2:
-    sys.exit('Usage: obiwan.py [video file]')
+ap = argparse.ArgumentParser()
+ap.add_argument('video', help='The video file to analyse')
+ap.add_argument('-a', help='Frame number to start analysis',type=int,default=0)
+ap.add_argument('-b', help='Frame number to end analysis',type=int, default=-1)
+args = ap.parse_args()
 
 #Try to open video
-cap = cv2.VideoCapture(sys.argv[1])
+cap = cv2.VideoCapture(args.video)
 
 if not cap.isOpened():
     sys.exit('Error opening video file')
@@ -93,8 +114,8 @@ vidWidth = cap.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH)
 vidHeight = cap.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT)
 vidFPS = cap.get(cv2.cv.CV_CAP_PROP_FPS)
 vidLen = cap.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT)
-startFrame = 0
-endFrame = vidLen
+startFrame = args.a
+endFrame = args.b if args.b != -1 else vidLen
 
 #Define windows
 cv2.namedWindow('Obiwan')
@@ -102,15 +123,13 @@ cv2.setMouseCallback('Obiwan', set_roi)
 
 cv2.namedWindow('obwControls')
 cv2.createTrackbar('ROI size', 'obwControls', roi_size, 100, set_roi_size)
-cv2.createTrackbar('Start', 'obwControls', 0, int(vidLen), setStartFrame )
-cv2.createTrackbar('End','obwControls',int(vidLen),int(vidLen), setEndFrame )
+cv2.createTrackbar('Start', 'obwControls', startFrame, int(vidLen), setStartFrame )
+cv2.createTrackbar('End','obwControls',endFrame,int(vidLen), setEndFrame )
 
 roi_points = []
 vel = []
 acc = []
 seconds = []
-#if true the graph will display and update in real time. Slows down execution
-ANIMATE_GRAPH = False
 
 ret, img = cap.read()
 img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -156,8 +175,7 @@ while(1):
     x0,y0 = roi_points[-2]
     x1,y1 = roi_points[-1]
     
-    #vel.append(math.sqrt((roi_y-y0)**2 + (roi_x-x0)**2))
-    #Only taking vertical component - test
+    #Only taking vertical component
     vel.append(y1-y0)
 
     #Calculate acceleration
@@ -173,17 +191,13 @@ while(1):
     cv2.putText(img, str(round(seconds[-1],3)), (30,30), cv2.FONT_HERSHEY_SIMPLEX, 1,255 )
 
     cv2.imshow('Obiwan',img)
-    if ANIMATE_GRAPH and getVidPosition(cap) % 30 == 0:
-        plt.plot(seconds, acc, 'r-', seconds, vel, 'b-', linewidth=1)
-        plt.ylabel('Force')
-        plt.draw()
          
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
     
 cap.release()
 cv2.destroyAllWindows()
-plt.plot(seconds, acc, 'r-', seconds, vel, 'b-', linewidth=1)
+plt.plot(seconds, smooth(np.array(acc),window_len=smooth_len), 'r-', seconds, smooth(np.array(vel),window_len=smooth_len), 'b-', linewidth=1)
 plt.ylabel('Force')
 plt.ioff()
 plt.show()
