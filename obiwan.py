@@ -42,7 +42,7 @@ def convScreenToCart(pts):
     
     #Screen coordinates have (0,0) at top left but cartesian has bottom left
 
-    return (pts[0], (pts[1] + vidHeight) % vidHeight)
+    return (pts[0], -1 * pts[1] + vidHeight)
 
 def set_vid_position(cap, pos):
     #Set position at frame pos
@@ -73,6 +73,7 @@ def setEndFrame(n):
         cv2.imshow('Obiwan',img)
         endFrame = n
 
+#Stolen from scipy recipe
 def smooth(x,window_len=11,window='hanning'):
     if x.ndim != 1:
         raise ValueError, "smooth only accepts 1 dimensional arrays."
@@ -99,6 +100,7 @@ smooth_len = 11 #Length of smoothing kernal
 
 ap = argparse.ArgumentParser()
 ap.add_argument('video', help='The video file to analyse')
+ap.add_argument('weight',help='Weight being lifted, no units',type=float)
 ap.add_argument('-a', help='Frame number to start analysis',type=int,default=0)
 ap.add_argument('-b', help='Frame number to end analysis',type=int, default=-1)
 args = ap.parse_args()
@@ -115,7 +117,7 @@ vidHeight = cap.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT)
 vidFPS = cap.get(cv2.cv.CV_CAP_PROP_FPS)
 vidLen = cap.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT)
 startFrame = args.a
-endFrame = args.b if args.b != -1 else vidLen
+endFrame = args.b if args.b != -1 else int(vidLen)
 
 #Define windows
 cv2.namedWindow('Obiwan')
@@ -131,10 +133,11 @@ vel = []
 acc = []
 seconds = []
 
+
+set_vid_position(cap, startFrame)
 ret, img = cap.read()
 img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 cv2.imshow('Obiwan',img)
-plt.ion()
 
 #Wait for click to define roi
 while (roi_x == -1 or roi_y == -1):
@@ -152,7 +155,7 @@ if getVidPosition(cap) != startFrame:
     roi_x += roi_size 
     roi_y += roi_size
 
-roi_points.append((roi_x,roi_y))
+roi_points.append(convScreenToCart((roi_x,roi_y)))
 draw_roi()
 running = True
 
@@ -171,7 +174,7 @@ while(1):
     roi_y += roi_size
 
     #Calculate velocity
-    roi_points.append((roi_x,roi_y))
+    roi_points.append(convScreenToCart((roi_x,roi_y)))
     x0,y0 = roi_points[-2]
     x1,y1 = roi_points[-1]
     
@@ -194,10 +197,16 @@ while(1):
          
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
-    
+
+
 cap.release()
 cv2.destroyAllWindows()
-plt.plot(seconds, smooth(np.array(acc),window_len=smooth_len), 'r-', seconds, smooth(np.array(vel),window_len=smooth_len), 'b-', linewidth=1)
+
+plt.subplot(211)
+plt.plot(seconds, map(lambda x: x*args.weight , smooth(np.array(acc),window_len=smooth_len).tolist()), 'r-',linewidth=1)
 plt.ylabel('Force')
-plt.ioff()
+
+plt.subplot(212)
+plt.plot(seconds, smooth(np.array(vel),window_len=smooth_len), 'b-', linewidth=1)
+plt.ylabel('Bar Speed')
 plt.show()
