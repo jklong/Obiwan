@@ -97,6 +97,7 @@ roi_x = -1
 roi_y  = -1
 roi = None
 smooth_len = 11 #Length of smoothing kernal
+searchSize = int(roi_size * 1.5) #Size of area to search for template, tweak this for performance and accuracy
 
 ap = argparse.ArgumentParser()
 ap.add_argument('video', help='The video file to analyse')
@@ -166,12 +167,13 @@ while(1):
         break
 
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    res = cv2.matchTemplate(img, roi, cv2.TM_CCOEFF_NORMED)
+    searchArea = img[roi_y - searchSize:roi_y + searchSize, roi_x - searchSize:roi_x + searchSize]
+    res = cv2.matchTemplate(searchArea, roi, cv2.TM_CCOEFF_NORMED)
     min_v, max_v, min_loc, max_loc = cv2.minMaxLoc(res)
    
-    roi_x, roi_y = max_loc
-    roi_x += roi_size 
-    roi_y += roi_size
+    roi_x2, roi_y2 = max_loc
+    roi_x = roi_x2 - searchSize + roi_x + roi_size 
+    roi_y = roi_y2 - searchSize + roi_y + roi_size
 
     #Calculate velocity
     roi_points.append(convScreenToCart((roi_x,roi_y)))
