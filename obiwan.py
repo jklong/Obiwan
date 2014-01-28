@@ -92,18 +92,17 @@ def smooth(x,window_len=11,window='hanning'):
     return y[window_len:-window_len+1]
 
 running = False
-roi_size = 25
 roi_x = -1
 roi_y  = -1
 roi = None
 smooth_len = 11 #Length of smoothing kernal
-searchSize = int(roi_size * 1.5) #Size of area to search for template, tweak this for performance and accuracy
 
 ap = argparse.ArgumentParser()
 ap.add_argument('video', help='The video file to analyse')
 ap.add_argument('weight',help='Weight being lifted, no units',type=float)
 ap.add_argument('-a', help='Frame number to start analysis',type=int,default=0)
 ap.add_argument('-b', help='Frame number to end analysis',type=int, default=-1)
+ap.add_argument('-p', dest='barpath', help='Draw bar path', action="store_true", default=False)
 args = ap.parse_args()
 
 #Try to open video
@@ -120,6 +119,9 @@ vidLen = cap.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT)
 startFrame = args.a
 endFrame = args.b if args.b != -1 else int(vidLen)
 
+roi_size = int(vidWidth/25.6) #Initial roi size setting. Set based on wild guess and testing.
+searchSize = int(roi_size * 1.5) #Size of area to search for template, tweak this for performance and accuracy
+
 #Define windows
 cv2.namedWindow('Obiwan')
 cv2.setMouseCallback('Obiwan', set_roi)
@@ -130,6 +132,7 @@ cv2.createTrackbar('Start', 'obwControls', startFrame, int(vidLen), setStartFram
 cv2.createTrackbar('End','obwControls',endFrame,int(vidLen), setEndFrame )
 
 roi_points = []
+path = []
 vel = []
 acc = []
 seconds = []
@@ -158,6 +161,7 @@ if getVidPosition(cap) != startFrame:
 
 roi_points.append(convScreenToCart((roi_x,roi_y)))
 draw_roi()
+
 running = True
 
 while(1):
@@ -168,12 +172,16 @@ while(1):
 
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     searchArea = img[roi_y - searchSize:roi_y + searchSize, roi_x - searchSize:roi_x + searchSize]
+    
     res = cv2.matchTemplate(searchArea, roi, cv2.TM_CCOEFF_NORMED)
     min_v, max_v, min_loc, max_loc = cv2.minMaxLoc(res)
    
     roi_x2, roi_y2 = max_loc
-    roi_x = roi_x2 - searchSize + roi_x + roi_size 
+    roi_x = roi_x2 - searchSize + roi_x + roi_size
     roi_y = roi_y2 - searchSize + roi_y + roi_size
+
+    if args.barpath:
+        path.append((roi_x,roi_y))
 
     #Calculate velocity
     roi_points.append(convScreenToCart((roi_x,roi_y)))
@@ -195,6 +203,9 @@ while(1):
 
     cv2.putText(img, str(round(seconds[-1],3)), (30,30), cv2.FONT_HERSHEY_SIMPLEX, 1,255 )
 
+    if args.barpath:
+        drawPath = np.array(path,np.int32).reshape((-1,1,2))
+        cv2.polylines(img,[drawPath],False,(200,0,0,0.8),thickness=2)
     cv2.imshow('Obiwan',img)
          
     if cv2.waitKey(1) & 0xFF == ord('q'):
