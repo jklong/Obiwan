@@ -104,6 +104,34 @@ def filter_matches(kp1, kp2, matches, ratio = 0.75):
     kp_pairs = zip(mkp1, mkp2)
     return p1, p2, kp_pairs
 	
+def calcWeight (points, n = -1):
+	''' 
+	
+	Returns 'weight' that should be assigned to a point when calculating mean for centroid
+	
+	points = numpy matrix of points
+	n = number of nearest neighbours, -1 = all.
+	
+	returns: 
+	
+	'''
+	weights = []
+	
+	for p1 in points:
+		distances = []
+		for p2 in points:
+			if p1 != p2:
+				distances.append(math.sqrt(abs(p1[0] - p2[0])**2) + abs(p1[1] - p2[1]))
+		distances = sorted(distances)
+		
+		if n != -1:
+			distances = distances[:n]
+		
+		distances = map(lambda x: 1/(x**2), distances) #Using 1/(d^2) for weights
+		weights.append(sum(distances)/len(distances))
+	
+	return weights
+	
 # Mostly not my code, stolen from find_obj
 #
 # Edited to draw centroid on img2
@@ -150,11 +178,14 @@ def explore_match(win, img1, img2, kp_pairs, status = None, H = None):
             cv2.line(vis, (x1, y1), (x2, y2), green)
 			
 	points = [kp[1].pt for kp in kp_pairs]
-	centroid = np.mean(points, axis = 0) #Calculate centroid coordinates
+	weights = calcWeight(points)
+	centroid = np.average(points, weights=weights, axis = 0) #Calculate centroid coordinates using weighted average
 		
-	cv2.circle(vis, (int(centroid[0] + w1),int(centroid[1])), 2, (0,0,255), -1)
+	cv2.circle(vis, (int(centroid[0] + w1),int(centroid[1])), 3, (255,0,0), -1)
 
     cv2.imshow(win, vis)
+
+    
 	
 running = False
 roi_x = -1
